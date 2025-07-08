@@ -1,0 +1,148 @@
+name: CI
+
+on: [ "push", "pull_request" ]
+
+permissions:
+  contents: read
+
+env:
+  GLIBC_VERSION: 2.17
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        target:
+          - { name: Windows, os: windows-2025, triple: [ "x86_64-pc-windows-msvc", "i686-pc-windows-msvc", "aarch64-pc-windows-msvc" ] }
+          - { name: Linux, os: ubuntu-24.04, triple: [ "x86_64-unknown-linux-gnu", "i686-unknown-linux-gnu", "aarch64-unknown-linux-gnu" ], install-zig: true }
+          - { name: MacOS, os: macos-15, triple: [ "x86_64-apple-darwin", "aarch64-apple-darwin" ] }
+
+    name: Build (${{ matrix.target.name }})
+    runs-on: ${{ matrix.target.os }}
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions-rust-lang/setup-rust-toolchain@1780873c7b576612439a134613cc4cc74ce5538c # v1.15.2
+        with:
+          target: ${{ join(matrix.target.triple, ' ') }}
+          components: rustfmt
+
+      - if: matrix.target.install-zig
+        uses: mlugg/setup-zig@8d6198c65fb0feaa111df26e6b467fea8345e46f # v2.0.5
+      - if: matrix.target.install-zig
+        uses: taiki-e/install-action@e79914c740f0acf092c59adfa2a61d3d2266b6bf # v2.62.32
+        with:
+          tool: cargo-zigbuild
+
+      - name: Format
+        run: cargo fmt --check
+
+      - name: Build
+        run: |
+          for target in ${{ join(matrix.target.triple, ' ') }}; do
+            echo "Building $target"
+            if [[ "$target" == *"linux-gnu" ]]; then
+              cargo zigbuild --release --target "$target.$GLIBC_VERSION"
+            else
+              cargo build --release --target "$target"              
+            fi
+          done
+
+      - name: Test
+        run: cargo test
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: doorstop-${{ matrix.target.name }}
+          path: |
+            target/*/release/libdoorstop.so
+            target/*/release/libdoorstop.dylib
+            target/*/release/doorstop.dll
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: doorstop_launcher-${{ matrix.target.name }}
+          path: |
+            target/*/release/doorstop_launcher
+            target/*/release/doorstop_launcher.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: doorstop_player-${{ matrix.target.name }}
+          path: |
+            target/*/release/doorstop_player
+            target/*/release/doorstop_player.exe
+
+  test:
+    needs: build
+
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - { name: Windows, arch: x64, os: windows-2025, triple: [ "x86_64-pc-windows-msvc", "i686-pc-windows-msvc" ] }
+          - { name: Windows, arch: arm64, os: windows-11-arm, triple: [ "aarch64-pc-windows-msvc" ] }
+          - { name: Linux, arch: x64, os: ubuntu-24.04, triple: [ "x86_64-unknown-linux-gnu", "i686-unknown-linux-gnu" ] }
+#          - { name: Linux, arch: arm64, os: ubuntu-24.04-arm, triple: [ "aarch64-unknown-linux-gnu" ] }
+          - { name: MacOS, arch: arm64, os: macos-15, triple: [ "x86_64-apple-darwin", "aarch64-apple-darwin" ] }
+
+    name: Test (${{ matrix.target.name }}-${{ matrix.target.arch }})
+    runs-on: ${{ matrix.target.os }}
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install linux dependencies
+        if: matrix.target.name == 'Linux'
+        run: |
+          # Fix AppArmor blocking SteamLinuxRuntime
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+          # Install wine
+          sudo dpkg --add-architecture i386
+          sudo mkdir -pm755 /etc/apt/keyrings
+          wget -O - https://dl.winehq.org/wine-builds/winehq.key | sudo gpg --dearmor -o /etc/apt/keyrings/winehq-archive.key -
+          sudo wget -NP /etc/apt/sources.list.d/ https://dl.winehq.org/wine-builds/ubuntu/dists/noble/winehq-noble.sources
+          sudo apt-get update
+          sudo apt-get install -y --install-recommends winehq-staging xvfb mesa-utils libgl1-mesa-dri:i386 libgl1:i386
+
+      - name: Setup .NET
+        uses: js6pak/setup-dotnet@d3880cac5f837959c67b5235dcecbbf2d8e7c626 # https://github.com/actions/setup-dotnet/pull/538
+        with:
+#          global-json-file: ./DoorstopTests/global.json
+           dotnet-version: 10.0.100-rc.2.25502.107
+
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: '*'
+          merge-multiple: true
+          path: target
+
+      - name: chmod +x artifacts
+        if: matrix.target.name != 'Windows'
+        run: chmod +x target/*/*/doorstop_launcher target/*/*/doorstop_player
+
+      - name: Restore
+        working-directory: ./DoorstopTests
+        run: dotnet restore --locked-mode
+
+      - name: Build
+        working-directory: ./DoorstopTests
+        run: dotnet build --no-restore
+
+#      - name: Format
+#        working-directory: ./DoorstopTests
+#        run: dotnet format --no-restore --verbosity diagnostic --verify-no-changes
+
+      - name: Test
+        working-directory: ./DoorstopTests
+        timeout-minutes: 30
+        # run: dotnet test --no-restore TODO maybe switch to this once upstream MTP concurrency issues are fixed
+        run: dotnet run --project ./DoorstopTests
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

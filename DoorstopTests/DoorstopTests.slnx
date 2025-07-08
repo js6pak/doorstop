@@ -1,0 +1,19 @@
+<Solution>
+    <Configurations>
+        <Platform Name="Mono" />
+        <Platform Name="IL2CPP" />
+    </Configurations>
+
+    <Project Path="DoorstopTests\DoorstopTests.csproj" />
+
+    <Project Path="DoorstopTests.Entrypoint/DoorstopTests.Entrypoint.csproj">
+        <Platform Solution="*|Mono" Project="Mono" />
+        <Platform Solution="*|IL2CPP" Project="IL2CPP" />
+
+        <!-- Rider uses a different format... wtf -->
+        <Configuration Solution="*|Mono" Project="*|Mono" />
+        <Configuration Solution="*|IL2CPP" Project="*|IL2CPP" />
+    </Project>
+
+    <Project Path="PdbPostprocess\PdbPostprocess.csproj" />
+</Solution>

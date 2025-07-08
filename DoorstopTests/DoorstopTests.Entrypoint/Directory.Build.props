@@ -1,0 +1,16 @@
+<Project>
+    <Import Project="$([MSBuild]::GetDirectoryNameOfFileAbove($(MSBuildThisFileDirectory)..\, Directory.Build.props))\Directory.Build.props" />
+
+    <PropertyGroup>
+        <Platforms>Mono;IL2CPP</Platforms>
+        <Platform Condition="'$(Platform)' == ''">Mono</Platform>
+        <PlatformTarget>AnyCPU</PlatformTarget>
+        <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
+
+        <!-- Move NuGet cache so it's platform specific -->
+        <BaseIntermediateOutputPath>obj\</BaseIntermediateOutputPath>
+        <IntermediateOutputPath>$(BaseIntermediateOutputPath)$(Platform)\$(Configuration)\</IntermediateOutputPath>
+        <MSBuildProjectExtensionsPath>$(IntermediateOutputPath)</MSBuildProjectExtensionsPath>
+        <NuGetLockFilePath>packages.$(Platform.ToLower()).lock.json</NuGetLockFilePath>
+    </PropertyGroup>
+</Project>

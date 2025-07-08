@@ -1,0 +1,30 @@
+[package]
+name = "doorstop_player"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+description.workspace = true
+repository.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+doorstop_shared = { path = "../doorstop_shared" }
+doorstop_core = { path = "../doorstop_core" }
+cfg-if = { workspace = true }
+anyhow = { workspace = true }
+plthook = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true, features = ["Win32_System_Environment", "Win32_Globalization", "Win32_UI_Shell"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
+libloading = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = { workspace = true }
+objc2-foundation = { workspace = true }

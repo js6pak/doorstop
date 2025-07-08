@@ -1,0 +1,53 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <LangVersion>preview</LangVersion>
+        <ImplicitUsings>false</ImplicitUsings>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+        <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+
+        <!-- This is needed because we hardcode file paths in debugging tests -->
+        <DeterministicSourcePaths>true</DeterministicSourcePaths>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="MonoMod.RuntimeDetour" Version="25.3.2-alpha.dev" />
+        <PackageReference Include="MonoMod.Backports" Version="2.0.0-alpha.dev" />
+    </ItemGroup>
+
+    <PropertyGroup Condition="'$(Platform)' == 'Mono'">
+        <TargetFramework>net35</TargetFramework>
+        <DebugType>portable</DebugType>
+        <DefineConstants>MONO</DefineConstants>
+    </PropertyGroup>
+
+    <ItemGroup Condition="'$(Platform)' == 'Mono'">
+        <!-- Unity 4.0.0 -->
+        <Reference Include="libs\UnityEngine.dll" Private="false" />
+
+        <PackageReference Update="MonoMod.Backports" ExcludeAssets="runtime" GeneratePathProperty="true" />
+        <None Include="$(PkgMonoMod_Backports)\lib\net35\MonoMod.Backports.dll" Visible="false" CopyToOutputDirectory="Always" LinkBase="net35" />
+        <None Include="$(PkgMonoMod_Backports)\lib\net35\MonoMod.Backports.pdb" Visible="false" CopyToOutputDirectory="Always" LinkBase="net35" />
+        <None Include="$(PkgMonoMod_Backports)\lib\net45\MonoMod.Backports.dll" Visible="false" CopyToOutputDirectory="Always" LinkBase="net45" />
+        <None Include="$(PkgMonoMod_Backports)\lib\net45\MonoMod.Backports.pdb" Visible="false" CopyToOutputDirectory="Always" LinkBase="net45" />
+    </ItemGroup>
+
+    <Import Project="..\PdbPostprocess\PdbPostprocess.props" Condition="'$(Platform)' == 'Mono'" />
+
+    <PropertyGroup Condition="'$(Platform)' == 'IL2CPP'">
+        <TargetFramework>net9.0</TargetFramework>
+        <GenerateDependencyFile>false</GenerateDependencyFile>
+        <DefineConstants>IL2CPP</DefineConstants>
+    </PropertyGroup>
+
+    <ItemGroup Condition="'$(Platform)' == 'IL2CPP'">
+        <!-- TODO publish this on nuget -->
+        <None Update="runtimes\osx-arm64\native\libdobby.dylib" CopyToOutputDirectory="Always" />
+    </ItemGroup>
+
+    <Target Name="AnnotateTargetPathWithPlatform" AfterTargets="GetTargetPathWithTargetPlatformMoniker">
+        <ItemGroup>
+            <TargetPathWithTargetPlatformMoniker Platform="$(Platform)" />
+        </ItemGroup>
+    </Target>
+</Project>

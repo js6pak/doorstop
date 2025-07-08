@@ -1,0 +1,40 @@
+<Project>
+    <ItemGroup>
+        <ProjectReference Include="$(MSBuildThisFileDirectory)PdbPostprocess.csproj">
+            <OutputItemType>PdbPostprocess</OutputItemType>
+            <Private>false</Private>
+            <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+            <SkipGetTargetFrameworkProperties>true</SkipGetTargetFrameworkProperties>
+        </ProjectReference>
+    </ItemGroup>
+
+    <Target Name="_RunPdbPostprocessInputs">
+        <PropertyGroup>
+            <_PdbPostprocessSentinelFile>$(IntermediateOutputPath)$(MSBuildProjectName).pdbpostprocess.sentinel</_PdbPostprocessSentinelFile>
+        </PropertyGroup>
+
+        <ItemGroup>
+            <_PdbPostprocessAssemblies Include="$(OutDir)\**\*.dll" />
+        </ItemGroup>
+    </Target>
+
+    <Target Name="RunPdbPostprocess"
+            AfterTargets="CopyFilesToOutputDirectory"
+            DependsOnTargets="_RunPdbPostprocessInputs"
+            Inputs="@(PdbPostprocess);@(_PdbPostprocessAssemblies)"
+            Outputs="$(_PdbPostprocessSentinelFile)">
+        <Exec Command="dotnet exec &quot;@(PdbPostprocess)&quot; @(_PdbPostprocessAssemblies->'&quot;%(FullPath)&quot;', ' ')"
+              ConsoleToMsBuild="true" LogStandardErrorAsError="true" />
+
+        <WriteLinesToFile Lines="This file's LastWriteTime is used in incremental build" File="$(_PdbPostprocessSentinelFile)" Overwrite="True" />
+
+        <ItemGroup>
+            <FileWrites Include="$(_PdbPostprocessSentinelFile)" />
+
+            <_PdbPostprocessOutputs Include="@(_PdbPostprocessAssemblies->'%(RelativeDir)%(Filename).pdb')" />
+            <_PdbPostprocessOutputs Include="@(_PdbPostprocessAssemblies->'%(FullPath).mdb')" />
+            <_PdbPostprocessOutputs Remove="@(_PdbPostprocessOutputs)" Condition="!Exists('%(Identity)')" />
+            <FileWrites Include="@(_PdbPostprocessOutputs)" />
+        </ItemGroup>
+    </Target>
+</Project>

@@ -1,0 +1,27 @@
+[package]
+name = "doorstop_launcher"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+description.workspace = true
+repository.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+doorstop_shared = { path = "../doorstop_shared" }
+anyhow = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true, features = ["Win32_System_Environment", "Win32_System_JobObjects"] }
+mini-syringe = { git = "https://github.com/js6pak/dll-syringe.git", branch = "reloaded3" }
+
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = { workspace = true }
+objc2-foundation = { workspace = true }

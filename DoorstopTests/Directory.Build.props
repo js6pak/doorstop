@@ -1,0 +1,17 @@
+<Project>
+    <Sdk Name="OpinionPak.Sdk" Version="0.1.0-ci.49" />
+
+    <PropertyGroup>
+        <GenerateFileHeaderEditorConfig>false</GenerateFileHeaderEditorConfig>
+        <NanoVer>false</NanoVer>
+    </PropertyGroup>
+
+    <!-- TODO remove -->
+    <PropertyGroup>
+        <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+        <MSBuildTreatWarningsAsErrors>false</MSBuildTreatWarningsAsErrors>
+
+        <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
+        <RestoreLockedMode>false</RestoreLockedMode>
+    </PropertyGroup>
+</Project>
