@@ -1,5 +1,8 @@
 using System.Net;
-using DoorstopTests.TestGame;
+using System.Runtime.InteropServices;
+using BepInEx.GameTestFramework.Models;
+using BepInEx.GameTestFramework.Unity;
+using BepInEx.GameTestFramework.Unity.TestGame;
 using Mono.Debugging.Client;
 using Mono.Debugging.Soft;
 
@@ -7,18 +10,16 @@ namespace DoorstopTests;
 
 public sealed partial class TestGameTests
 {
-    public static IEnumerable<TestGameRunner> GetMonoDebuggingTestGameBuilds()
-    {
-        return TestGameManager.Builds.Where(build =>
-            build.ScriptingImplementation == ScriptingImplementation.Mono
+    public static IEnumerable<UnityGameRunner> MonoDebuggingTestGameBuilds
+        => TestGameManager.Runners.Where(build =>
+            build.RuntimeType == DotNetRuntimeType.Mono
             // Setting breakpoints on macos-arm64 crashes before 2021.2 due to W^X
-            && (build.Platform != Platform.MacOS || build.Architecture != PlatformArchitecture.Arm64 || build.UnityVersion.GreaterThanOrEquals(2021, 2))
-        );
-    }
+            && (build.Platform != Platform.MacOS || build.Architecture != Architecture.Arm64 || build.UnityVersion.GreaterThanOrEquals(2021, 2)));
 
     [Test]
-    [MethodDataSource(nameof(GetMonoDebuggingTestGameBuilds))]
-    public async Task Debugging(TestGameRunner build, CancellationToken cancellationToken = default)
+    [MethodDataSource(nameof(MonoDebuggingTestGameBuilds))]
+    [Retry(3)] // sdb itself is quite flaky
+    public async Task Debugging(UnityGameRunner runner, CancellationToken cancellationToken = default)
     {
         var breakpoints = new BreakpointStore
         {
@@ -74,22 +75,24 @@ public sealed partial class TestGameTests
 
         var port = await session.AssignedDebugPort;
 
-        await build.LaunchAsync(
-            new TestGameRunner.TestGameLaunchOptions
+        var result = await runner.LaunchAsync(
+            new UnityGameRunner.LaunchOptions
             {
-                ExpectedExitCode = 0xAB,
-                ConfigureEnvironment = env =>
-                {
-                    env["DOORSTOPTESTS_SCENARIO"] = "debugging";
-
-                    env["DOORSTOP_MONO_DEBUG_ENABLED"] = "true";
-                    env["DOORSTOP_MONO_DEBUG_CONNECT"] = "true";
-                    env["DOORSTOP_MONO_DEBUG_SUSPEND"] = "true";
-                    env["DOORSTOP_MONO_DEBUG_ADDRESS"] = "127.0.0.1:" + port;
-                },
+                TargetAssembly = Constants.EntrypointPaths[runner.RuntimeType],
+            },
+            info =>
+            {
+                var env = info.Environment;
+                env["DOORSTOPTESTS_SCENARIO"] = "debugging";
+                env["DOORSTOP_MONO_DEBUG_ENABLED"] = "true";
+                env["DOORSTOP_MONO_DEBUG_CONNECT"] = "true";
+                env["DOORSTOP_MONO_DEBUG_SUSPEND"] = "true";
+                env["DOORSTOP_MONO_DEBUG_ADDRESS"] = "127.0.0.1:" + port;
             },
             cancellationToken
         );
+
+        await Assert.That(result.ExitCode).IsEqualTo(0xAB);
     }
 }
 

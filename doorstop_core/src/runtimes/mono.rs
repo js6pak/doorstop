@@ -10,6 +10,8 @@ use std::{
         Once, OnceLock,
         atomic::{AtomicBool, Ordering},
     },
+    thread::sleep,
+    time::Duration,
 };
 
 use anyhow::{Context, bail};
@@ -339,20 +341,30 @@ fn init(mono: &Mono, is_net35: bool) {
         }
 
         if config.mono_debug_enabled {
-            let mut arg = String::from("--debugger-agent=transport=dt_socket,embedding=1");
-
-            arg.push_str(",server=");
-            arg.push_str(if config.mono_debug_connect { "n" } else { "y" });
-
-            arg.push_str(",address=");
-            arg.push_str(config.mono_debug_address.as_ref().unwrap());
-
-            if !config.mono_debug_suspend {
-                arg.push_str(",suspend=n");
-                if is_net35 && !config.mono_debug_connect {
-                    arg.push_str(",defer=y");
+            let arg = if let Ok(args) = env::var("MONO_ARGUMENTS") {
+                if args.contains("server=n") {
+                    sleep(Duration::from_millis(250));
                 }
-            }
+
+                args
+            } else {
+                let mut arg = String::from("--debugger-agent=transport=dt_socket,embedding=1");
+
+                arg.push_str(",server=");
+                arg.push_str(if config.mono_debug_connect { "n" } else { "y" });
+
+                arg.push_str(",address=");
+                arg.push_str(config.mono_debug_address.as_ref().unwrap());
+
+                if !config.mono_debug_suspend {
+                    arg.push_str(",suspend=n");
+                    if is_net35 && !config.mono_debug_connect {
+                        arg.push_str(",defer=y");
+                    }
+                }
+
+                arg
+            };
 
             let arg = CString::new(arg).unwrap();
             let args = [arg.as_ptr()];

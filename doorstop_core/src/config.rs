@@ -97,6 +97,10 @@ impl Config {
         config.load_from_environment();
         config.load_from_command_line();
 
+        if env::var_os("MONO_ARGUMENTS").is_some() {
+            config.mono_debug_enabled = true;
+        }
+
         config
     }
 

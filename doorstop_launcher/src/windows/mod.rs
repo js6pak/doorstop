@@ -1,4 +1,6 @@
 use std::{
+    env,
+    io::{IsTerminal, stdout},
     os::windows::{io::FromRawHandle, process::ExitCodeExt},
     process::ExitCode,
     slice,
@@ -8,8 +10,9 @@ use anyhow::Context;
 use mini_syringe::{Syringe, process::OwnedProcess};
 use windows::{
     Win32::{
-        Foundation::{ERROR_INVALID_PARAMETER, HANDLE, WAIT_FAILED},
+        Foundation::{ERROR_INVALID_PARAMETER, HANDLE, HANDLE_FLAG_INHERIT, SetHandleInformation, WAIT_FAILED},
         System::{
+            Console::{GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE},
             Environment::GetCommandLineW,
             JobObjects::{
                 AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
@@ -65,6 +68,16 @@ fn try_main() -> anyhow::Result<ExitCode> {
             return Ok(ExitCode::from(1));
         }
 
+        if stdout().is_terminal() {
+            env::set_var("DOORSTOP_ATTACH_CONSOLE", "1");
+        }
+
+        for std_handle in [STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE] {
+            if let Ok(handle) = GetStdHandle(std_handle) {
+                _ = SetHandleInformation(handle, HANDLE_FLAG_INHERIT.0, HANDLE_FLAG_INHERIT);
+            }
+        }
+
         let mut startup_info = STARTUPINFOW::default();
         startup_info.cb = u32::try_from(size_of_val(&startup_info)).unwrap();
 
@@ -86,7 +99,6 @@ fn try_main() -> anyhow::Result<ExitCode> {
         };
 
         // Sometimes creating a process with bInheritHandles=true fails with INVALID_PARAMETER, not sure why
-        // TODO investigate
         match create_process(true) {
             Err(e) if e.code() == ERROR_INVALID_PARAMETER.to_hresult() => create_process(false),
             r => r,

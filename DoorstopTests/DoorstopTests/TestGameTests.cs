@@ -1,64 +1,55 @@
-using System.Diagnostics.CodeAnalysis;
-using DoorstopTests.TestGame;
-using DoorstopTests.Utilities;
+using System.Runtime.InteropServices;
+using BepInEx.GameTestFramework.Models;
+using BepInEx.GameTestFramework.Unity;
+using BepInEx.GameTestFramework.Unity.TestGame;
+using BepInEx.GameTestFramework.Utilities;
 using TUnit.Core.Helpers;
 
 namespace DoorstopTests;
 
-[SuppressMessage("Usage", "TUnit0046:Return a `Func<T>` rather than a `<T>`", Justification = "We *do* want TestGameRunner's to be reused, so this is a false positive")]
 [ParallelLimiter<ProcessorCountParallelLimit>]
-[RetryException.Attribute(3)]
+[RetryException(3)]
 [Timeout(2 * 60 * 1000)]
 public sealed partial class TestGameTests
 {
-    [SuppressMessage("Design", "CA1024:Use properties where appropriate", Justification = "TUnit needs a method")]
-    public static IEnumerable<TestGameRunner> GetTestGameBuilds()
+    private async Task TestInjectionMethodAsync(UnityGameRunner runner, DoorstopInjectionMethod method, CancellationToken cancellationToken = default)
     {
-        return TestGameManager.Builds;
+        var result = await runner.LaunchAsync(
+            new UnityGameRunner.LaunchOptions
+            {
+                TargetAssembly = Constants.EntrypointPaths[runner.RuntimeType],
+                InjectionMethod = method,
+            },
+            info => info.Environment["DOORSTOPTESTS_ASSERT_RUNTIME"] = runner.RuntimeType == DotNetRuntimeType.IL2CPP ? "CoreCLR" : "Mono",
+            cancellationToken
+        );
+
+        await Assert.That(result.ExitCode).IsEqualTo(0xAA);
     }
 
-    public static IEnumerable<TestGameRunner> GetLauncherTestGameBuilds()
-    {
+    public static IEnumerable<UnityGameRunner> LauncherTestGameBuilds
         // dll-syringe doesn't support win-arm64 yet
-        return TestGameManager.Builds.Where(b => b is not { Platform: Platform.Windows, Architecture: PlatformArchitecture.Arm64 });
-    }
+        => TestGameManager.Runners.Where(b => b is not { Platform: Platform.Windows, Architecture: Architecture.Arm64 });
 
     [Test]
-    [MethodDataSource(nameof(GetLauncherTestGameBuilds))]
-    public async Task Launcher(TestGameRunner build, CancellationToken cancellationToken = default)
+    [MethodDataSource(nameof(LauncherTestGameBuilds))]
+    public async Task Launcher(UnityGameRunner runner, CancellationToken cancellationToken = default)
     {
-        await build.LaunchAsync(
-            new TestGameRunner.TestGameLaunchOptions
-            {
-                InjectionMethod = TestGameRunner.DoorstopInjectionMethod.Launcher,
-                ExpectedExitCode = 0xAA,
-            },
-            cancellationToken
-        );
+        await TestInjectionMethodAsync(runner, DoorstopInjectionMethod.Launcher, cancellationToken);
     }
 
-    public static IEnumerable<TestGameRunner> GetWindowsTestGameBuilds()
-    {
-        return TestGameManager.Builds.Where(b => b.Platform == Platform.Windows);
-    }
+    public static IEnumerable<UnityGameRunner> WindowsTestGameBuilds
+        => TestGameManager.Runners.Where(b => b.Platform == Platform.Windows);
 
     [Test]
-    [MethodDataSource(nameof(GetWindowsTestGameBuilds))]
-    public async Task DllProxy(TestGameRunner build, CancellationToken cancellationToken = default)
+    [MethodDataSource(nameof(WindowsTestGameBuilds))]
+    public async Task DllProxy(UnityGameRunner runner, CancellationToken cancellationToken = default)
     {
-        await build.LaunchAsync(
-            new TestGameRunner.TestGameLaunchOptions
-            {
-                InjectionMethod = TestGameRunner.DoorstopInjectionMethod.DllProxy,
-                ExpectedExitCode = 0xAA,
-            },
-            cancellationToken
-        );
+        await TestInjectionMethodAsync(runner, DoorstopInjectionMethod.DllProxy, cancellationToken);
     }
 
-    public static IEnumerable<TestGameRunner> GetPlayerTestGameBuilds()
-    {
-        return TestGameManager.Builds.Where(b => b.Platform switch
+    public static IEnumerable<UnityGameRunner> PlayerTestGameBuilds
+        => TestGameManager.Runners.Where(b => b.Platform switch
         {
             Platform.Windows => b.UnityVersion.GreaterThanOrEquals(2017, 2),
             // Platform.MacOS => b.UnityVersion.GreaterThanOrEquals(2018, 3),
@@ -67,19 +58,11 @@ public sealed partial class TestGameTests
             Platform.Android => false,
             _ => throw new ArgumentOutOfRangeException(),
         });
-    }
 
     [Test]
-    [MethodDataSource(nameof(GetPlayerTestGameBuilds))]
-    public async Task Player(TestGameRunner build, CancellationToken cancellationToken = default)
+    [MethodDataSource(nameof(PlayerTestGameBuilds))]
+    public async Task Player(UnityGameRunner runner, CancellationToken cancellationToken = default)
     {
-        await build.LaunchAsync(
-            new TestGameRunner.TestGameLaunchOptions
-            {
-                InjectionMethod = TestGameRunner.DoorstopInjectionMethod.Player,
-                ExpectedExitCode = 0xAA,
-            },
-            cancellationToken
-        );
+        await TestInjectionMethodAsync(runner, DoorstopInjectionMethod.Player, cancellationToken);
     }
 }

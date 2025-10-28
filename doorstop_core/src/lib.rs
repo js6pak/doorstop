@@ -121,6 +121,15 @@ pub fn fatal<T, E: std::fmt::Debug + std::fmt::Display>(result: Result<T, E>) ->
 }
 
 pub unsafe fn try_init(unity_player_handle: *const c_void) -> anyhow::Result<()> {
+    #[cfg(windows)]
+    unsafe {
+        use windows::Win32::System::Console::{ATTACH_PARENT_PROCESS, AttachConsole};
+
+        if env::var("DOORSTOP_ATTACH_CONSOLE").is_ok() {
+            _ = AttachConsole(ATTACH_PARENT_PROCESS);
+        }
+    }
+
     let config = CONFIG.get_or_init(Config::load);
 
     setup_logging().context("Failed to setup logging")?;

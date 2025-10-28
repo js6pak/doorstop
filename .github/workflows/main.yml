@@ -17,25 +17,30 @@ jobs:
     strategy:
       matrix:
         target:
-          - { name: Windows, os: windows-2025, triple: [ "x86_64-pc-windows-msvc", "i686-pc-windows-msvc", "aarch64-pc-windows-msvc" ] }
-          - { name: Linux, os: ubuntu-24.04, triple: [ "x86_64-unknown-linux-gnu", "i686-unknown-linux-gnu", "aarch64-unknown-linux-gnu" ], install-zig: true }
-          - { name: MacOS, os: macos-15, triple: [ "x86_64-apple-darwin", "aarch64-apple-darwin" ] }
+          # Windows build takes forever, so break them up
+          - { name: win-x64, os: windows-2025, triple: [ "x86_64-pc-windows-msvc" ] }
+          - { name: win-x86, os: windows-2025, triple: [ "i686-pc-windows-msvc" ] }
+          - { name: win-arm64, os: windows-2025, triple: [ "aarch64-pc-windows-msvc" ] }
+          - { name: linux, os: ubuntu-24.04, triple: [ "x86_64-unknown-linux-gnu", "i686-unknown-linux-gnu", "aarch64-unknown-linux-gnu" ], install-zig: true }
+          - { name: osx, os: macos-15, triple: [ "x86_64-apple-darwin", "aarch64-apple-darwin" ] }
 
     name: Build (${{ matrix.target.name }})
     runs-on: ${{ matrix.target.os }}
 
     steps:
+      - uses: lhotari/gh-actions-artifact-client@ef03990878cb292d789ee6c36b5bbc8369aa30ed # v2
       - uses: actions/checkout@v5
 
       - uses: actions-rust-lang/setup-rust-toolchain@1780873c7b576612439a134613cc4cc74ce5538c # v1.15.2
         with:
+          toolchain: nightly
           target: ${{ join(matrix.target.triple, ' ') }}
           components: rustfmt
 
       - if: matrix.target.install-zig
         uses: mlugg/setup-zig@8d6198c65fb0feaa111df26e6b467fea8345e46f # v2.0.5
       - if: matrix.target.install-zig
-        uses: taiki-e/install-action@e79914c740f0acf092c59adfa2a61d3d2266b6bf # v2.62.32
+        uses: taiki-e/install-action@41ef8c65f4034ff24ab1cc2cef52f3000bcf9523 # v2.62.40
         with:
           tool: cargo-zigbuild
 
@@ -51,32 +56,20 @@ jobs:
             else
               cargo build --release --target "$target"              
             fi
+
+            echo "Uploading $target"
+            if [[ "$target" == *"windows"* ]]; then
+              artifacts=("doorstop.dll" "doorstop_launcher.exe" "doorstop_player.exe")
+            elif [[ "$target" == *"linux"* ]]; then
+              artifacts=("libdoorstop.so" "doorstop_launcher" "doorstop_player")
+            elif [[ "$target" == *"apple-darwin" ]]; then
+              artifacts=("libdoorstop.dylib" "doorstop_launcher" "doorstop_player")
+            fi
+            (cd target/"$target"/release && 7z a "$target".zip ${artifacts[*]} && cat "$target".zip | gh-actions-artifact-client.js upload "$target")
           done
 
       - name: Test
         run: cargo test
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: doorstop-${{ matrix.target.name }}
-          path: |
-            target/*/release/libdoorstop.so
-            target/*/release/libdoorstop.dylib
-            target/*/release/doorstop.dll
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: doorstop_launcher-${{ matrix.target.name }}
-          path: |
-            target/*/release/doorstop_launcher
-            target/*/release/doorstop_launcher.exe
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: doorstop_player-${{ matrix.target.name }}
-          path: |
-            target/*/release/doorstop_player
-            target/*/release/doorstop_player.exe
 
   test:
     needs: build
@@ -85,47 +78,53 @@ jobs:
       fail-fast: false
       matrix:
         target:
-          - { name: Windows, arch: x64, os: windows-2025, triple: [ "x86_64-pc-windows-msvc", "i686-pc-windows-msvc" ] }
-          - { name: Windows, arch: arm64, os: windows-11-arm, triple: [ "aarch64-pc-windows-msvc" ] }
-          - { name: Linux, arch: x64, os: ubuntu-24.04, triple: [ "x86_64-unknown-linux-gnu", "i686-unknown-linux-gnu" ] }
-#          - { name: Linux, arch: arm64, os: ubuntu-24.04-arm, triple: [ "aarch64-unknown-linux-gnu" ] }
-          - { name: MacOS, arch: arm64, os: macos-15, triple: [ "x86_64-apple-darwin", "aarch64-apple-darwin" ] }
+          - { name: win-x64, os: windows-2025, triple: [ "x86_64-pc-windows-msvc", "i686-pc-windows-msvc" ] }
+          - { name: win-arm64, os: windows-11-arm, triple: [ "aarch64-pc-windows-msvc" ] }
+          - { name: linux-x64, os: ubuntu-24.04, triple: [ "x86_64-unknown-linux-gnu", "i686-unknown-linux-gnu" ] }
+          - { name: wine@linux-x64, os: ubuntu-24.04, triple: [ "x86_64-pc-windows-msvc", "i686-pc-windows-msvc" ], wine: true }
+          # - { name: linux-arm64, os: ubuntu-24.04-arm, triple: [ "aarch64-unknown-linux-gnu" ] }
+          - { name: osx-arm64, os: macos-15, triple: [ "x86_64-apple-darwin", "aarch64-apple-darwin" ] }
 
-    name: Test (${{ matrix.target.name }}-${{ matrix.target.arch }})
+    name: Test (${{ matrix.target.name }})
     runs-on: ${{ matrix.target.os }}
 
     steps:
+      - uses: lhotari/gh-actions-artifact-client@ef03990878cb292d789ee6c36b5bbc8369aa30ed # v2
       - uses: actions/checkout@v5
 
-      - name: Install linux dependencies
-        if: matrix.target.name == 'Linux'
+      - name: Setup linux
+        if: startsWith(matrix.target.os, 'ubuntu-')
         run: |
           # Fix AppArmor blocking SteamLinuxRuntime
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
-          # Install wine
           sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y --install-recommends xvfb mesa-utils libgl1-mesa-dri:i386 libgl1:i386 libegl1:i386
+
+      - name: Install wine
+        if: matrix.target.wine
+        run: |
+          # Install wine
           sudo mkdir -pm755 /etc/apt/keyrings
           wget -O - https://dl.winehq.org/wine-builds/winehq.key | sudo gpg --dearmor -o /etc/apt/keyrings/winehq-archive.key -
           sudo wget -NP /etc/apt/sources.list.d/ https://dl.winehq.org/wine-builds/ubuntu/dists/noble/winehq-noble.sources
           sudo apt-get update
-          sudo apt-get install -y --install-recommends winehq-staging xvfb mesa-utils libgl1-mesa-dri:i386 libgl1:i386
+          sudo apt-get install -y --install-recommends winehq-staging
 
       - name: Setup .NET
         uses: js6pak/setup-dotnet@d3880cac5f837959c67b5235dcecbbf2d8e7c626 # https://github.com/actions/setup-dotnet/pull/538
         with:
-#          global-json-file: ./DoorstopTests/global.json
-           dotnet-version: 10.0.100-rc.2.25502.107
+          global-json-file: ./DoorstopTests/global.json
 
-      - uses: actions/download-artifact@v5
-        with:
-          pattern: '*'
-          merge-multiple: true
-          path: target
-
-      - name: chmod +x artifacts
-        if: matrix.target.name != 'Windows'
-        run: chmod +x target/*/*/doorstop_launcher target/*/*/doorstop_player
+      - name: Download artifacts
+        run: |
+          for target in ${{ join(matrix.target.triple, ' ') }}; do
+            echo "Downloading $target"
+            mkdir -p target/"$target"/release
+            gh-actions-artifact-client.js download "$target" > /tmp/"$target".zip
+            7z e /tmp/"$target".zip -otarget/"$target"/release
+          done
 
       - name: Restore
         working-directory: ./DoorstopTests
@@ -143,6 +142,7 @@ jobs:
         working-directory: ./DoorstopTests
         timeout-minutes: 30
         # run: dotnet test --no-restore TODO maybe switch to this once upstream MTP concurrency issues are fixed
-        run: dotnet run --project ./DoorstopTests
+        run: dotnet run --no-restore --project ./DoorstopTests -- --treenode-filter "$FILTER"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FILTER: ${{ startsWith(matrix.target.os, 'ubuntu-') && (matrix.target.wine && '/*/*/*/*[Platform=win]' || '/*/*/*/*[Platform!=win]') || '/*/*/*/*' }}

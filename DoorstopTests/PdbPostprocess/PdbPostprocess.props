@@ -21,7 +21,7 @@
     <Target Name="RunPdbPostprocess"
             AfterTargets="CopyFilesToOutputDirectory"
             DependsOnTargets="_RunPdbPostprocessInputs"
-            Inputs="@(PdbPostprocess);@(_PdbPostprocessAssemblies)"
+            Inputs="@(PdbPostprocess);@(_PdbPostprocessAssemblies);@(CopyUpToDateMarker)"
             Outputs="$(_PdbPostprocessSentinelFile)">
         <Exec Command="dotnet exec &quot;@(PdbPostprocess)&quot; @(_PdbPostprocessAssemblies->'&quot;%(FullPath)&quot;', ' ')"
               ConsoleToMsBuild="true" LogStandardErrorAsError="true" />
@@ -31,9 +31,9 @@
         <ItemGroup>
             <FileWrites Include="$(_PdbPostprocessSentinelFile)" />
 
-            <_PdbPostprocessOutputs Include="@(_PdbPostprocessAssemblies->'%(RelativeDir)%(Filename).pdb')" />
-            <_PdbPostprocessOutputs Include="@(_PdbPostprocessAssemblies->'%(FullPath).mdb')" />
-            <_PdbPostprocessOutputs Remove="@(_PdbPostprocessOutputs)" Condition="!Exists('%(Identity)')" />
+            <_PdbPostprocessOutputs Include="@(_PdbPostprocessAssemblies->'%(RelativeDir)%(Filename).pdb')" Condition="Exists('%(Identity)')" />
+            <_PdbPostprocessOutputs Include="@(_PdbPostprocessAssemblies->'%(FullPath).mdb')" Condition="Exists('%(Identity)')" />
+
             <FileWrites Include="@(_PdbPostprocessOutputs)" />
         </ItemGroup>
     </Target>
