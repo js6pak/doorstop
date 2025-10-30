@@ -47,7 +47,7 @@ fn fix_cwd() -> anyhow::Result<()> {
 
                 let bundle = NSBundle::mainBundle();
 
-                PathBuf::from(unsafe { bundle.bundlePath() }.to_string())
+                PathBuf::from(bundle.bundlePath().to_string())
             } else {
                 env::current_exe()?
             }

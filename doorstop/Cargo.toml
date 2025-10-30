@@ -17,7 +17,7 @@ crate-type = ["cdylib"]
 [dependencies]
 doorstop_shared = { path = "../doorstop_shared" }
 doorstop_core = { path = "../doorstop_core" }
-ctor = "0.5.0"
+ctor = "0.6"
 
 [target.'cfg(windows)'.dependencies]
 windows = { workspace = true, features = ["Win32_System_SystemInformation"] }

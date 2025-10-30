@@ -20,15 +20,20 @@ public sealed partial class TestGameTests
                 TargetAssembly = Constants.EntrypointPaths[runner.RuntimeType],
                 InjectionMethod = method,
             },
-            info => info.Environment["DOORSTOPTESTS_ASSERT_RUNTIME"] = runner.RuntimeType == DotNetRuntimeType.IL2CPP ? "CoreCLR" : "Mono",
             cancellationToken
         );
 
         await Assert.That(result.ExitCode).IsEqualTo(0xAA);
+
+        // Make sure debug symbols are loaded by runtime
+        await Assert.That(result.Output)
+            .Contains("Example stacktrace:")
+            .And
+            .Contains("/_/DoorstopTests/DoorstopTests.Entrypoint/DoorstopEntrypoint.cs:");
     }
 
+    // dll-syringe doesn't support win-arm64 yet
     public static IEnumerable<UnityGameRunner> LauncherTestGameBuilds
-        // dll-syringe doesn't support win-arm64 yet
         => TestGameManager.Runners.Where(b => b is not { Platform: Platform.Windows, Architecture: Architecture.Arm64 });
 
     [Test]
