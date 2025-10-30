@@ -28,6 +28,14 @@ use crate::{ProcessorArchitecture, get_doorstop_path, windows::utils::strip_firs
 
 mod utils;
 
+macro_rules! trace {
+    ($($arg:tt)+) => {
+        if env::var_os("DOORSTOP_LOG_LEVEL").is_some_and(|v| v.eq("trace")) {
+            eprintln!("[doorstop_launcher] {}", format!($($arg)+));
+        }
+    }
+}
+
 #[must_use]
 pub fn main() -> ExitCode {
     try_main().unwrap_or_else(|err| {
@@ -98,6 +106,8 @@ fn try_main() -> anyhow::Result<ExitCode> {
             )
         };
 
+        trace!("Creating process: {}", String::from_utf16_lossy(&command_line[..(command_line.len() - 1)]));
+
         // Sometimes creating a process with bInheritHandles=true fails with INVALID_PARAMETER, not sure why
         match create_process(true) {
             Err(e) if e.code() == ERROR_INVALID_PARAMETER.to_hresult() => create_process(false),
@@ -136,6 +146,8 @@ fn try_main() -> anyhow::Result<ExitCode> {
 
         let doorstop_path = get_doorstop_path(Some(architecture))?;
 
+        trace!("Injecting doorstop: {}", doorstop_path.display());
+
         let syringe = Syringe::for_suspended_process(owned_process).context("Failed to initialize the suspended process")?;
         syringe.inject(doorstop_path).context("Failed to inject doorstop")?;
 
@@ -143,12 +155,15 @@ fn try_main() -> anyhow::Result<ExitCode> {
             Err(Error::from_thread()).context("ResumeThread failed")?;
         }
 
+        trace!("Waiting for process to exit");
+
         if WaitForSingleObject(process, INFINITE) == WAIT_FAILED {
             Err(Error::from_thread()).context("WaitForSingleObject failed")?;
         }
 
         let mut exit_code = 1;
         GetExitCodeProcess(process, &raw mut exit_code).context("GetExitCodeProcess failed")?;
+        trace!("Process exited with code: {}", exit_code);
         Ok(ExitCode::from_raw(exit_code))
     }
 }

@@ -13,9 +13,13 @@ use std::{
     fs,
     io::Write,
     path::{Path, PathBuf},
+    process,
     process::exit,
     str::FromStr,
-    sync::OnceLock,
+    sync::{
+        OnceLock,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use anyhow::Context;
@@ -47,7 +51,7 @@ fn fix_cwd() -> anyhow::Result<()> {
 
                 let bundle = NSBundle::mainBundle();
 
-                PathBuf::from(unsafe { bundle.bundlePath() }.to_string())
+                PathBuf::from(bundle.bundlePath().to_string())
             } else {
                 env::current_exe()?
             }
@@ -134,21 +138,28 @@ pub unsafe fn try_init(unity_player_handle: *const c_void) -> anyhow::Result<()>
 
     setup_logging().context("Failed to setup logging")?;
 
-    if !ensure_single_instance().context("Failed to setup process lock")? {
-        warn!("Doorstop was injected more than once!");
-        return Ok(());
-    }
-
     if unity_player_handle.is_null() {
         // In case there is no UnityPlayer, it could still be an old Unity version where it was compiled into the executable
         // Do a simple heuristic check by looking for a valid data folder
         if find_data_folder().is_none() {
+            trace!(
+                "Current process ({} - {}) is not an Unity game, skipping",
+                process::id(),
+                env::current_exe()?.display()
+            );
             return Ok(());
         }
 
+        FILE_LOGGING.store(true, Ordering::Relaxed);
         info!("UnityPlayer not found, hooking into main executable instead");
     } else {
+        FILE_LOGGING.store(true, Ordering::Relaxed);
         info!("UnityPlayer found, initializing");
+    }
+
+    if !ensure_single_instance().context("Failed to setup process lock")? {
+        warn!("Doorstop was injected more than once!");
+        return Ok(());
     }
 
     trace!("config = {config:?}");
@@ -208,6 +219,8 @@ fn is_valid_data_folder(path: &Path) -> bool {
     path.is_dir() && ["data.unity3d", "globalgamemanagers", "mainData"].iter().any(|file| path.join(file).exists())
 }
 
+static FILE_LOGGING: AtomicBool = AtomicBool::new(false);
+
 fn setup_logging() -> anyhow::Result<()> {
     let log_level = if let Ok(level) = env::var("DOORSTOP_LOG_LEVEL") {
         LevelFilter::from_str(&level)?
@@ -235,10 +248,11 @@ fn setup_logging() -> anyhow::Result<()> {
                         message = message,
                     ));
                 })
-                .chain(std::io::stdout()),
+                .chain(std::io::stderr()),
         )
         .chain(
             fern::Dispatch::new()
+                .filter(|_| FILE_LOGGING.load(Ordering::Relaxed))
                 .format(|out, message, record| out.finish(format_args!("[{} {}] {}", record.level(), record.target(), message)))
                 .chain(Box::new(LazyFileWriter::new("doorstop.log")) as Box<dyn Write + Send>),
         )

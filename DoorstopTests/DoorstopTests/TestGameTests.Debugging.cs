@@ -10,10 +10,10 @@ namespace DoorstopTests;
 
 public sealed partial class TestGameTests
 {
+    // Setting breakpoints on macos-arm64 crashes before 2021.2 due to W^X
     public static IEnumerable<UnityGameRunner> MonoDebuggingTestGameBuilds
         => TestGameManager.Runners.Where(build =>
             build.RuntimeType == DotNetRuntimeType.Mono
-            // Setting breakpoints on macos-arm64 crashes before 2021.2 due to W^X
             && (build.Platform != Platform.MacOS || build.Architecture != Architecture.Arm64 || build.UnityVersion.GreaterThanOrEquals(2021, 2)));
 
     [Test]

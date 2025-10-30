@@ -40,7 +40,7 @@ jobs:
       - if: matrix.target.install-zig
         uses: mlugg/setup-zig@8d6198c65fb0feaa111df26e6b467fea8345e46f # v2.0.5
       - if: matrix.target.install-zig
-        uses: taiki-e/install-action@41ef8c65f4034ff24ab1cc2cef52f3000bcf9523 # v2.62.40
+        uses: taiki-e/install-action@81ee1d48d9194cdcab880cbdc7d36e87d39874cb # v2.62.45
         with:
           tool: cargo-zigbuild
 
@@ -65,11 +65,11 @@ jobs:
             elif [[ "$target" == *"apple-darwin" ]]; then
               artifacts=("libdoorstop.dylib" "doorstop_launcher" "doorstop_player")
             fi
-            (cd target/"$target"/release && 7z a "$target".zip ${artifacts[*]} && cat "$target".zip | gh-actions-artifact-client.js upload "$target")
+            (cd target/"$target"/release && 7z a "$target".zip ${artifacts[*]} && cat "$target".zip | gh-actions-artifact-client.js upload "$target" --retentionDays 0)
           done
 
       - name: Test
-        run: cargo test
+        run: cargo test --release
 
   test:
     needs: build
@@ -100,7 +100,9 @@ jobs:
 
           sudo dpkg --add-architecture i386
           sudo apt-get update
-          sudo apt-get install -y --install-recommends xvfb mesa-utils libgl1-mesa-dri:i386 libgl1:i386 libegl1:i386
+          sudo apt-get install -y --install-recommends gdb xvfb mesa-utils libgl1-mesa-dri:i386 libgl1:i386 libegl1:i386
+
+          echo 0 | sudo tee /proc/sys/kernel/yama/ptrace_scope
 
       - name: Install wine
         if: matrix.target.wine
@@ -134,9 +136,9 @@ jobs:
         working-directory: ./DoorstopTests
         run: dotnet build --no-restore
 
-#      - name: Format
-#        working-directory: ./DoorstopTests
-#        run: dotnet format --no-restore --verbosity diagnostic --verify-no-changes
+      - name: Format
+        working-directory: ./DoorstopTests
+        run: dotnet format --no-restore --verbosity diagnostic --verify-no-changes
 
       - name: Test
         working-directory: ./DoorstopTests
@@ -146,3 +148,47 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FILTER: ${{ startsWith(matrix.target.os, 'ubuntu-') && (matrix.target.wine && '/*/*/*/*[Platform=win]' || '/*/*/*/*[Platform!=win]') || '/*/*/*/*' }}
+
+      - name: Upload core dumps
+        if: failure() && startsWith(matrix.target.os, 'ubuntu-')
+        uses: actions/upload-artifact@v5
+        with:
+          name: core-dumps-${{ matrix.target.name }}
+          path: /tmp/core.*
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Setup tmate session
+        if: failure()
+        uses: mxschmitt/action-tmate@c0afd6f790e3a5564914980036ebf83216678101 # v3.23
+        with:
+          detached: true
+
+  release:
+    if: github.ref_type == 'tag'
+    needs: [ build, test ]
+
+    name: Release
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: lhotari/gh-actions-artifact-client@ef03990878cb292d789ee6c36b5bbc8369aa30ed # v2
+
+      - name: Download artifacts
+        run: |
+          TARGETS=(
+            "x86_64-pc-windows-msvc" "i686-pc-windows-msvc" "aarch64-pc-windows-msvc"
+            "x86_64-unknown-linux-gnu" "i686-unknown-linux-gnu" "aarch64-unknown-linux-gnu"
+            "x86_64-apple-darwin" "aarch64-apple-darwin"
+          )
+
+          for target in "${TARGETS[@]}"; do
+            echo "Downloading $target"
+            gh-actions-artifact-client.js download "$target" >doorstop-"$target".zip
+          done
+
+      - name: Release
+        uses: softprops/action-gh-release@6da8fa9354ddfdc4aeace5fc48d7f679b5214090 # v2.4.1
+        with:
+          draft: true
+          files: doorstop-*.zip

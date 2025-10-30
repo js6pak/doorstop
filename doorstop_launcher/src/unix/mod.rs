@@ -98,7 +98,7 @@ fn transform_executable_path(path: &CStr) -> Option<&CStr> {
 
         let path = unsafe { NSString::stringWithUTF8String(NonNull::new(path.as_ptr().cast_mut()).unwrap()) }.unwrap();
 
-        if let Some(executable_path) = unsafe { NSBundle::bundleWithPath(&path).and_then(|bundle| bundle.executablePath()) } {
+        if let Some(executable_path) = NSBundle::bundleWithPath(&path).and_then(|bundle| bundle.executablePath()) {
             return Some(unsafe { CStr::from_ptr(libc::strdup(executable_path.UTF8String())) });
         }
     }

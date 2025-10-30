@@ -7,6 +7,7 @@ use std::{
 use cfg_if::cfg_if;
 use doorstop_core::fatal;
 use doorstop_shared::OsStrExt;
+use libloading::os::unix::{RTLD_GLOBAL, RTLD_LAZY};
 
 use crate::init;
 
@@ -36,15 +37,18 @@ extern "C" fn main(argc: i32, argv: *mut *mut c_char) -> i32 {
                 }
             };
 
-            let lib = libloading::os::unix::Library::new({
-                cfg_if! {
-                    if #[cfg(target_os = "macos")] {
-                        executable.join("Contents/Frameworks/UnityPlayer.dylib")
-                    } else {
-                        "./UnityPlayer.so"
+            let lib = libloading::os::unix::Library::open(
+                Some({
+                    cfg_if! {
+                        if #[cfg(target_os = "macos")] {
+                            executable.join("Contents/Frameworks/UnityPlayer.dylib")
+                        } else {
+                            "./UnityPlayer.so"
+                        }
                     }
-                }
-            })?;
+                }),
+                RTLD_LAZY | RTLD_GLOBAL,
+            )?;
 
             let player_main: unsafe extern "system" fn(argc: i32, argv: *mut *mut c_char) -> i32 = *lib.get(PLAYER_MAIN_SYMBOL)?;
 
